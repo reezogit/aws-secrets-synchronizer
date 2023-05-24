@@ -1,0 +1,8 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aws-secretmanager-worker
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["*"]

@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+# This cluster role binding allows anyone in the "manager" group to read secrets in any namespace.
+kind: ClusterRoleBinding
+metadata:
+  name: aws-secretmanager-worker-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: aws-secretmanager-worker
+    namespace: infra
+    apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: aws-secretmanager-worker
+  apiGroup: ""

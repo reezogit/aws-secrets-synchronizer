@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: aws-secretmanager-worker
+  labels:
+    app: aws-secretmanager-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aws-secretmanager-worker
+  template:
+    metadata:
+      labels:
+        app: aws-secretmanager-worker
+    spec:
+      serviceAccountName: aws-secretmanager-worker
+      containers:
+        - name: aws-secretmanager-worker
+          image: 233549521198.dkr.ecr.eu-west-1.amazonaws.com/infra/aws-secretmanager-worker:0.0.1
+          imagePullPolicy: Always
+          env:
+            - name: AWS_REGION
+              value: eu-west-1
+#          resources:
+#            limits:
+#              cpu: 100m
+#              memory: 64Mi
+#            requests:
+#              cpu: 100m
+#              memory: 64Mi
