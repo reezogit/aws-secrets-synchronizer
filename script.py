@@ -131,9 +131,7 @@ def main():
     while True:
         try:
             aws_secrets = list_aws_secrets_by_tags(region_name)
-            existing_kube_secrets = v1_api.list_secret_for_all_namespaces(watch=False, label_selector=print(
-                "%s=%s" % (secret_label, secret_label_value)))
-
+            existing_kube_secrets = v1_api.list_secret_for_all_namespaces(watch=False, label_selector=secret_label + "=" + secret_label_value)
             for aws_secret in aws_secrets:
                 try:
                     namespace = get_secret_namespace_tag(aws_secret)
@@ -144,7 +142,10 @@ def main():
                 data = json.loads(get_secret_values(aws_secret['Name'], region_name))
                 # encode data values to base64
                 for key, value in data.items():
-                    data[key] = base64.b64encode(value.encode()).decode("utf-8")
+                    if value is None:
+                        logging.warning("Secret %s has no value for key %s, skipping sync for this key", aws_secret['Name'], key)
+                    else:
+                        data[key] = base64.b64encode(value.encode()).decode("utf-8")
 
                 create_or_update_secret(core_client=v1_api,
                                         namespace=namespace,

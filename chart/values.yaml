@@ -1,0 +1,25 @@
+image:
+  repository: "ghcr.io/reezogit"
+  name: "aws-secret-synchronizer"
+  tag: "0.0.1-alpha1"
+  pullPolicy: IfNotPresent
+
+env: {}
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 64Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+clusterRole:
+  name: ""

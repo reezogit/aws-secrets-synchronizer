@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "aws-secrets-synchronizer.clusterRoleBindingName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "aws-secrets-synchronizer.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+    apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: {{ template "aws-secrets-synchronizer.clusterRoleName" . }}
+  apiGroup: ""
