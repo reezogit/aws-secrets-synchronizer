@@ -2,6 +2,7 @@ name: Build
 run-name: Build (${{ github.ref_name }})
 
 on:
+  # for test purpose
   push:
     tags:
       - "**"
