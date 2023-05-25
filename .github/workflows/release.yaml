@@ -5,6 +5,9 @@ on:
     branches:
       - it-3250
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   release:
     # depending on default permission settings for your org (contents being read-only or read-write for workloads), you will have to add permissions
