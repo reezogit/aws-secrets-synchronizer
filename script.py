@@ -7,11 +7,12 @@ import boto3
 from botocore.exceptions import ClientError
 from kubernetes import client, config
 
-tag_key = 'SyncedBy'
-tag_value = 'aws-secretmanager-worker'
-secret_label = "aws-secret"
-secret_label_value = "true"
-default_time_to_sleep = 300
+region_name = os.environ['AWS_REGION']
+time_to_sleep = os.environ['TIME_TO_SLEEP'] if 'TIME_TO_SLEEP' in os.environ else 300
+tag_key = os.environ['TAG_KEY'] if 'TAG_KEY' in os.environ else 'SyncedBy'
+tag_value = os.environ['TAG_VALUE'] if 'TAG_VALUE' in os.environ else 'aws-secrets-synchronizer'
+secret_label = "SyncedBy"
+secret_label_value = "aws-secrets-synchronizer"
 
 
 # list secret from AWS Secrets manager
@@ -122,8 +123,6 @@ def delete_obsolete_secrets(core_client, existing_kube_secrets, aws_secrets):
 
 
 def main():
-    region_name = os.environ['AWS_REGION']
-    time_to_sleep = os.environ['TIME_TO_SLEEP'] if 'TIME_TO_SLEEP' in os.environ else default_time_to_sleep
     # Fetching and loading local Kubernetes Information
     config.load_incluster_config()
     v1_api = client.CoreV1Api()
@@ -131,7 +130,8 @@ def main():
     while True:
         try:
             aws_secrets = list_aws_secrets_by_tags(region_name)
-            existing_kube_secrets = v1_api.list_secret_for_all_namespaces(watch=False, label_selector=secret_label + "=" + secret_label_value)
+            existing_kube_secrets = v1_api.list_secret_for_all_namespaces(watch=False,
+                                                                          label_selector=secret_label + "=" + secret_label_value)
             for aws_secret in aws_secrets:
                 try:
                     namespace = get_secret_namespace_tag(aws_secret)
@@ -143,7 +143,8 @@ def main():
                 # encode data values to base64
                 for key, value in data.items():
                     if value is None:
-                        logging.warning("Secret %s has no value for key %s, skipping sync for this key", aws_secret['Name'], key)
+                        logging.warning("Secret %s has no value for key %s, skipping sync for this key",
+                                        aws_secret['Name'], key)
                     else:
                         data[key] = base64.b64encode(value.encode()).decode("utf-8")
 

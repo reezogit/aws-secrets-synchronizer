@@ -4,15 +4,11 @@ image:
   tag: "0.0.1-alpha1"
   pullPolicy: IfNotPresent
 
+replicaCount: 1
+
 env: {}
 
-resources:
-  limits:
-    cpu: 100m
-    memory: 64Mi
-  requests:
-    cpu: 100m
-    memory: 64Mi
+resources: {}
 
 imagePullSecrets: []
 
