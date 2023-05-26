@@ -5,31 +5,33 @@ This is a simple operator to synchronize secrets from AWS Secrets Manager to kub
 ## Installation
 
 ```bash
-helm install aws-secrets-synchronizer <chart_url>
+helm repo add aws-secrets-synchronizer https://reezogit.github.io/aws-secrets-synchronizer
+helm install aws-secrets-synchronizer aws-secrets-synchronizer/aws-secrets-synchronizer
 ```
 
 ### Requirements
 
 - Helm v3
 - Minimal IAM rights for service account used by operator:
+
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "secretsmanager:GetResourcePolicy",
-                "secretsmanager:GetSecretValue",
-                "secretsmanager:DescribeSecret",
-                "secretsmanager:ListSecretVersionIds",
-                "secretsmanager:ListSecrets"
-            ],
-            "Resource": [
-                "*"
-            ]
-        }
-    ]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": [
+        "*"
+      ]
+    }
+  ]
 }
 ```
 
@@ -41,7 +43,7 @@ The following table lists the configurable parameters of the aws-secrets-synchro
 |------------------------------|-----------------------------|----------------------------|
 | `image.repository`           | Image repository            | `ghcr.io/reezogit`         |
 | `image.name`                 | Image name                  | `aws-secrets-synchronizer` |
-| `image.tag`                  | Image tag                   | `0.0.1-alpha1`             |
+| `image.tag`                  | Image tag                   | `0.0.1`                    |
 | `image.pullPolicy`           | Image pull policy           | `IfNotPresent`             |
 | `replicaCount`               | Replica count               | `1`                        |
 | `env`                        | Environment variables       | `{}`                       |
