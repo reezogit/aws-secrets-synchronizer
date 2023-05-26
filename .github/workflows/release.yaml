@@ -3,7 +3,7 @@ name: Release Charts
 on:
   push:
     branches:
-      - it-3250
+      - main
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
