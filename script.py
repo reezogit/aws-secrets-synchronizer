@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 from kubernetes import client, config
 
 region_name = os.environ['AWS_REGION']
-time_to_sleep = os.environ['TIME_TO_SLEEP'] if 'TIME_TO_SLEEP' in os.environ else 300
+sync_interval = os.environ['SYNC_INTERVAL'] if 'SYNC_INTERVAL' in os.environ else 300
 tag_key = os.environ['TAG_KEY'] if 'TAG_KEY' in os.environ else 'SyncedBy'
 tag_value = os.environ['TAG_VALUE'] if 'TAG_VALUE' in os.environ else 'aws-secrets-synchronizer'
 secret_label = "SyncedBy"
@@ -159,7 +159,7 @@ def main():
         except Exception as e:
             logging.error(e)
 
-        time.sleep(time_to_sleep)
+        time.sleep(sync_interval)
 
 
 if __name__ == "__main__":

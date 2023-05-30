@@ -1,6 +1,6 @@
 # aws-secrets-synchronizer
 
-This is a simple operator to synchronize secrets from AWS Secrets Manager to kube secrets.
+Kubernetes operator that synchronizes secrets from AWS Secrets Manager with kube secrets.
 
 ## Installation
 
