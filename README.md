@@ -15,9 +15,10 @@ AWS secrets must have:
 
 ## Environment variables
 
-| Variable name   | Optional | Description                           | Default value              |
-|-----------------|----------|---------------------------------------|----------------------------|
-| `AWS_REGION`    | false    | AWS region of secrets to synchronize  | None                       |
-| `SYNC_INTERVAL` | true     | Time to wait between synchronizations | `300`                      |
-| `TAG_KEY`       | true     | Tag key used to filter AWS secrets    | `SyncedBy`                 |
-| `TAG_VALUE`     | true     | Tag value used to filter AWS secrets  | `aws-secrets-synchronizer` |
+| Variable name   | Optional | Description                                          | Default value              |
+|-----------------|----------|------------------------------------------------------|----------------------------|
+| `AWS_REGION`    | false    | AWS region of secrets to synchronize                 | None                       |
+| `SYNC_INTERVAL` | true     | Time to wait between synchronizations                | `300`                      |
+| `SYNC_EMPTY`    | true     | If `false`, empty values are ignored in sync process | `true`                     |
+| `TAG_KEY`       | true     | Tag key used to filter AWS secrets                   | `SyncedBy`                 |
+| `TAG_VALUE`     | true     | Tag value used to filter AWS secrets                 | `aws-secrets-synchronizer` |

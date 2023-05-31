@@ -132,7 +132,7 @@ class SecretSyncer:
                 logging.warning("Key %s has an empty value, removed from synchronization.", key)
                 continue
             elif value is None:
-                logging.warning("Key %s has an empty value, using an empty string to sync.", key)
+                logging.warning("Key %s has an empty value.", key)
             else:
                 filtered_data[key] = value
 
