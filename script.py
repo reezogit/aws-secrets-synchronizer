@@ -75,7 +75,7 @@ class SecretSyncer:
     # get secret from AWS Secrets Manager
     def get_secret_namespace_tag(self, aws_secret):
         for tag in aws_secret['Tags']:
-            if tag['Key'] == 'Namespace':
+            if tag['Key'] == 'K8s-Namespace':
                 return tag['Value']
         raise Exception("No Namespace tag found for secret: ", aws_secret['Name'])
 
