@@ -19,10 +19,8 @@ class SecretSyncer:
         logging.basicConfig(level=log_level)
         # merge default params with params passed in
         self.params = {
-            'tag_key': 'SyncedBy',
-            'tag_value': 'aws-secrets-synchronizer',
-            'secret_label': 'SyncedBy',
-            'secret_label_value': 'aws-secrets-synchronizer',
+            'aws_tag_key': 'SyncedBy',
+            'aws_tag_value': 'aws-secrets-synchronizer',
             'sync_empty': True,
             'sync_interval': 300,
         }
@@ -35,13 +33,13 @@ class SecretSyncer:
                 {
                     'Key': 'tag-key',
                     'Values': [
-                        self.params['tag_key'],
+                        self.params['aws_tag_key'],
                     ],
                 },
                 {
                     'Key': 'tag-value',
                     'Values': [
-                        self.params['tag_value'],
+                        self.params['aws_tag_value'],
                     ],
                 },
             ], )
@@ -84,7 +82,7 @@ class SecretSyncer:
             api_version="v1",
             kind="Secret",
             metadata=client.V1ObjectMeta(name=name, annotations={},
-                                         labels={self.params['secret_label']: self.params['secret_label_value']}),
+                                         labels={"SyncedBy": self.params['aws_tag_value']}),
             data=data
         )
         try:
@@ -149,7 +147,7 @@ class SecretSyncer:
                 aws_secrets = self.list_aws_secrets_by_tags()
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
-                    label_selector=self.params['secret_label'] + "=" + self.params['secret_label_value'])
+                    label_selector="SyncedBy=" + self.params['aws_tag_value'])
                 for aws_secret in aws_secrets:
                     try:
                         namespace = self.get_secret_namespace_tag(aws_secret)
@@ -176,16 +174,16 @@ def main():
         params['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
     if 'SYNC_EMPTY' in os.environ:
         params['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
-    if 'TAG_KEY' in os.environ:
-        params['tag_key'] = os.environ['TAG_KEY']
-    if 'TAG_VALUE' in os.environ:
-        params['tag_value'] = os.environ['TAG_VALUE']
+    if 'AWS_TAG_KEY' in os.environ:
+        params['aws_tag_key'] = os.environ['AWS_TAG_KEY']
+    if 'AWS_TAG_VALUE' in os.environ:
+        params['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
 
     config.load_incluster_config()
     secret_syncer = SecretSyncer(
         client.CoreV1Api(),
         os.environ['AWS_REGION'],
-        logging.INFO,
+        'LOG_LEVEL' in os.environ and os.environ['LOG_LEVEL'] or 'INFO',
         params
     )
     secret_syncer.run()
