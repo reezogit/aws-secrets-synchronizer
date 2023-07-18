@@ -28,27 +28,36 @@ class SecretSyncer:
 
     # list secret from AWS Secrets manager
     def list_aws_secrets_by_tags(self):
-        try:
-            get_secret_value_response = self.client.list_secrets(Filters=[
-                {
-                    'Key': 'tag-key',
-                    'Values': [
-                        self.params['aws_tag_key'],
-                    ],
-                },
-                {
-                    'Key': 'tag-value',
-                    'Values': [
-                        self.params['aws_tag_value'],
-                    ],
-                },
-            ], )
-        except ClientError as e:
-            # For a list of exceptions thrown, see
-            # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_ListSecrets.html
-            raise e
+        next_token = ''
+        secrets = []
 
-        secrets = get_secret_value_response['SecretList']
+        while next_token != '':
+            try:
+                get_secret_value_response = self.client.list_secrets(
+                    MaxResults=-100,
+                    NextToken=next_token,
+                    Filters=[
+                        {
+                            'Key': 'tag-key',
+                            'Values': [
+                                self.params['aws_tag_key'],
+                            ],
+                        },
+                        {
+                            'Key': 'tag-value',
+                            'Values': [
+                                self.params['aws_tag_value'],
+                            ],
+                        },
+                    ], )
+
+            except ClientError as e:
+                # For a list of exceptions thrown, see
+                # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_ListSecrets.html
+                raise e
+
+            next_token = get_secret_value_response['NextToken']
+            secrets.extend(get_secret_value_response['SecretList'])
 
         return secrets
 
