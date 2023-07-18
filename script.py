@@ -28,38 +28,55 @@ class SecretSyncer:
 
     # list secret from AWS Secrets manager
     def list_aws_secrets_by_tags(self):
-        next_token = ''
         secrets = []
+        filters = [
+            {
+                'Key': 'tag-key',
+                'Values': [
+                    self.params['aws_tag_key'],
+                ],
+            },
+            {
+                'Key': 'tag-value',
+                'Values': [
+                    self.params['aws_tag_value'],
+                ],
+            },
+        ]
 
-        while next_token != '':
-            try:
-                get_secret_value_response = self.client.list_secrets(
-                    MaxResults=-100,
-                    NextToken=next_token,
-                    Filters=[
-                        {
-                            'Key': 'tag-key',
-                            'Values': [
-                                self.params['aws_tag_key'],
-                            ],
-                        },
-                        {
-                            'Key': 'tag-value',
-                            'Values': [
-                                self.params['aws_tag_value'],
-                            ],
-                        },
-                    ], )
+        # first call
+        get_secret_value_response = self.aws_list_secrets_call(filters)
+        secrets.extend(get_secret_value_response['SecretList'])
+        next_token = get_secret_value_response.get('NextToken', None)
 
-            except ClientError as e:
-                # For a list of exceptions thrown, see
-                # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_ListSecrets.html
-                raise e
-
-            next_token = get_secret_value_response['NextToken']
+        # next calls
+        while next_token is not None:
+            get_secret_value_response = self.aws_list_secrets_call(filters, next_token)
             secrets.extend(get_secret_value_response['SecretList'])
+            next_token = get_secret_value_response.get('NextToken', None)
 
         return secrets
+
+    def aws_list_secrets_call(self, filters, next_token=None, max_results=100):
+        try:
+            if next_token is None:
+                get_secret_value_response = self.client.list_secrets(
+                    MaxResults=max_results,
+                    Filters=filters
+                )
+            else:
+                get_secret_value_response = self.client.list_secrets(
+                    MaxResults=max_results,
+                    NextToken=next_token,
+                    Filters=filters
+                )
+
+        except ClientError as e:
+            # For a list of exceptions thrown, see
+            # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_ListSecrets.html
+            raise e
+
+        return get_secret_value_response
 
     # get secret from AWS Secrets Manager
     def get_secret_values(self, secret_name):
