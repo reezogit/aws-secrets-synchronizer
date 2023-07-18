@@ -108,7 +108,7 @@ class SecretSyncer:
             api_version="v1",
             kind="Secret",
             metadata=client.V1ObjectMeta(name=name, annotations={},
-                                         labels={"SyncedBy": self.params['aws_tag_value']}),
+                                         labels={self.params['aws_tag_key']: self.params['aws_tag_value']}),
             data=data
         )
         try:
