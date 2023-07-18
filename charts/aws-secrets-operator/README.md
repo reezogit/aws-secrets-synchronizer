@@ -43,7 +43,7 @@ The following table lists the configurable parameters of the aws-secrets-synchro
 |------------------------------|-----------------------------|----------------------------|
 | `image.repository`           | Image repository            | `ghcr.io/reezogit`         |
 | `image.name`                 | Image name                  | `aws-secrets-synchronizer` |
-| `image.tag`                  | Image tag                   | `0.2.0-rc1`                    |
+| `image.tag`                  | Image tag                   | `0.2.0-rc2`                    |
 | `image.pullPolicy`           | Image pull policy           | `IfNotPresent`             |
 | `replicaCount`               | Replica count               | `1`                        |
 | `env`                        | Environment variables       | `{}`                       |
