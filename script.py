@@ -209,7 +209,7 @@ def main():
     secret_syncer = SecretSyncer(
         client.CoreV1Api(),
         os.environ['AWS_REGION'],
-        'LOG_LEVEL' in os.environ and os.environ['LOG_LEVEL'] or 'INFO',
+        os.environ.get('LOG_LEVEL', logging.INFO),
         params
     )
     secret_syncer.run()
