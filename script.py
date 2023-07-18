@@ -173,7 +173,7 @@ class SecretSyncer:
                 aws_secrets = self.list_aws_secrets_by_tags()
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
-                    label_selector="SyncedBy=" + self.params['aws_tag_value'])
+                    label_selector= self.params['aws_tag_key'] + "=" + self.params['aws_tag_value'])
                 for aws_secret in aws_secrets:
                     try:
                         namespace = self.get_secret_namespace_tag(aws_secret)
