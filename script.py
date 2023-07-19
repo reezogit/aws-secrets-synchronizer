@@ -19,10 +19,8 @@ class SecretSyncer:
         logging.basicConfig(level=log_level)
         # merge default params with params passed in
         self.params = {
-            'tag_key': 'SyncedBy',
-            'tag_value': 'aws-secrets-synchronizer',
-            'secret_label': 'SyncedBy',
-            'secret_label_value': 'aws-secrets-synchronizer',
+            'aws_tag_key': 'SyncedBy',
+            'aws_tag_value': 'aws-secrets-synchronizer',
             'sync_empty': True,
             'sync_interval': 300,
         }
@@ -30,29 +28,55 @@ class SecretSyncer:
 
     # list secret from AWS Secrets manager
     def list_aws_secrets_by_tags(self):
+        secrets = []
+        filters = [
+            {
+                'Key': 'tag-key',
+                'Values': [
+                    self.params['aws_tag_key'],
+                ],
+            },
+            {
+                'Key': 'tag-value',
+                'Values': [
+                    self.params['aws_tag_value'],
+                ],
+            },
+        ]
+
+        # first call
+        get_secret_value_response = self.aws_list_secrets_call(filters)
+        secrets.extend(get_secret_value_response['SecretList'])
+        next_token = get_secret_value_response.get('NextToken', None)
+
+        # next calls
+        while next_token is not None:
+            get_secret_value_response = self.aws_list_secrets_call(filters, next_token)
+            secrets.extend(get_secret_value_response['SecretList'])
+            next_token = get_secret_value_response.get('NextToken', None)
+
+        return secrets
+
+    def aws_list_secrets_call(self, filters, next_token=None, max_results=100):
         try:
-            get_secret_value_response = self.client.list_secrets(Filters=[
-                {
-                    'Key': 'tag-key',
-                    'Values': [
-                        self.params['tag_key'],
-                    ],
-                },
-                {
-                    'Key': 'tag-value',
-                    'Values': [
-                        self.params['tag_value'],
-                    ],
-                },
-            ], )
+            if next_token is None:
+                get_secret_value_response = self.client.list_secrets(
+                    MaxResults=max_results,
+                    Filters=filters
+                )
+            else:
+                get_secret_value_response = self.client.list_secrets(
+                    MaxResults=max_results,
+                    NextToken=next_token,
+                    Filters=filters
+                )
+
         except ClientError as e:
             # For a list of exceptions thrown, see
             # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_ListSecrets.html
             raise e
 
-        secrets = get_secret_value_response['SecretList']
-
-        return secrets
+        return get_secret_value_response
 
     # get secret from AWS Secrets Manager
     def get_secret_values(self, secret_name):
@@ -84,7 +108,7 @@ class SecretSyncer:
             api_version="v1",
             kind="Secret",
             metadata=client.V1ObjectMeta(name=name, annotations={},
-                                         labels={self.params['secret_label']: self.params['secret_label_value']}),
+                                         labels={self.params['aws_tag_key']: self.params['aws_tag_value']}),
             data=data
         )
         try:
@@ -149,7 +173,7 @@ class SecretSyncer:
                 aws_secrets = self.list_aws_secrets_by_tags()
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
-                    label_selector=self.params['secret_label'] + "=" + self.params['secret_label_value'])
+                    label_selector= self.params['aws_tag_key'] + "=" + self.params['aws_tag_value'])
                 for aws_secret in aws_secrets:
                     try:
                         namespace = self.get_secret_namespace_tag(aws_secret)
@@ -176,16 +200,16 @@ def main():
         params['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
     if 'SYNC_EMPTY' in os.environ:
         params['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
-    if 'TAG_KEY' in os.environ:
-        params['tag_key'] = os.environ['TAG_KEY']
-    if 'TAG_VALUE' in os.environ:
-        params['tag_value'] = os.environ['TAG_VALUE']
+    if 'AWS_TAG_KEY' in os.environ:
+        params['aws_tag_key'] = os.environ['AWS_TAG_KEY']
+    if 'AWS_TAG_VALUE' in os.environ:
+        params['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
 
     config.load_incluster_config()
     secret_syncer = SecretSyncer(
         client.CoreV1Api(),
         os.environ['AWS_REGION'],
-        logging.INFO,
+        os.environ.get('LOG_LEVEL', logging.INFO),
         params
     )
     secret_syncer.run()
