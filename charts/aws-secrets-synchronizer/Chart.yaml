@@ -1,6 +1,6 @@
 apiVersion: v2
 name: aws-secrets-synchronizer
-version: 0.2.0
+version: 0.2.0-rc4
 description: K8S Operator that allows you to sync AWS SecretManager secrets with K8S secrets.
 type: application
 keywords:
