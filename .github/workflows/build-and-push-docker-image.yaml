@@ -3,7 +3,7 @@ run-name: Build (${{ github.ref_name }})
 
 on:
   release:
-    types: [prereleased, published]
+    types: [published]
 
 permissions:
     contents: read
