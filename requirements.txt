@@ -2,7 +2,7 @@ awscli==1.29.4
 boto3==1.28.4
 botocore==1.31.4
 cachetools==5.3.0
-certifi==2023.5.7
+certifi==2023.7.22
 charset-normalizer==3.1.0
 colorama==0.4.4
 Cython==3.0.0
