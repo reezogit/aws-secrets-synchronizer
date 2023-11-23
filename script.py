@@ -8,8 +8,12 @@ import boto3
 from botocore.exceptions import ClientError
 from kubernetes import client, config
 
+AWS_REGION = os.environ['AWS_REGION']
 
 APPLICATION_NAME = 'aws-secrets-synchronizer'
+APPLICATION_VERSION =  os.environ['APPLICATION_VERSION'] # Mandatory, will raise KeyError if not set
+ENVIRONMENT_TYPE = os.environ['ENVIRONMENT_TYPE'] # Mandatory, will raise KeyError if not set
+ENVIRONMENT_NAME = os.environ.get('ENVIRONMENT_NAME')
 
 
 def get_base_logger(name=None):
@@ -20,7 +24,7 @@ def get_base_logger(name=None):
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
             structlog.processors.EventRenamer("msg"), # rename 'event' to 'msg'
-            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False), # FIXME Not sure about the format
+            structlog.processors.TimeStamper(fmt="iso", utc=False),
             structlog.processors.JSONRenderer()
         ],
         wrapper_class=structlog.make_filtering_bound_logger(logging.NOTSET),
@@ -29,39 +33,50 @@ def get_base_logger(name=None):
         cache_logger_on_first_use=False
     )
 
-    structlog.contextvars.bind_contextvars(**{
-        'environment_type': os.environ['ENVIRONMENT_TYPE'], # Mandatory, will raise KeyError if not set
-        'environment_name': os.environ.get('ENVIRONMENT_NAME'),
-        'application_name': APPLICATION_NAME,
-        'application_version': os.environ['APPLICATION_VERSION'], # Mandatory, will raise KeyError if not set
-    })
+    structlog.contextvars.bind_contextvars(
+        application_name=APPLICATION_NAME,
+        application_version=APPLICATION_VERSION,
+        environment_type=ENVIRONMENT_TYPE,
+        environment_name=ENVIRONMENT_NAME,
+    )
 
     return structlog.get_logger(name=name)
 
 
 class SecretSyncer:
-    def __init__(self, v1_api, region_name, params, logger=None):
-        self.v1_api = v1_api
+    _base_config = {
+        'aws_tag_key': 'SyncedBy',
+        'aws_tag_value': 'aws-secrets-synchronizer',
+        'sync_empty': True,
+        'sync_interval': 300,
+    }
+
+    def __init__(self):
+        # Load configurtion and instanciate AWS API
+        config.load_incluster_config()
+        self.v1_api = client.CoreV1Api()
+
         self.client = boto3.client(
             service_name='secretsmanager',
-            region_name=region_name,
+            region_name=AWS_REGION,
         )
-        self.region_name = region_name
 
         # Use the default logger if the user did not provide its own.
-        self.logger = get_base_logger('SecretSyncer') if logger is None else logger  # not compatible with multiple instances of SecretSyncer
+        self.logger = get_base_logger('SecretSyncer') # not compatible with multiple instances of SecretSyncer
 
-        # merge default params with params passed in
-        self.params = {
-            'aws_tag_key': 'SyncedBy',
-            'aws_tag_value': 'aws-secrets-synchronizer',
-            'sync_empty': True,
-            'sync_interval': 300,
-        }
-        self.params.update(params)
+        # Merge default params with params passed in
+        self.params = SecretSyncer._base_config.update({
+            'sync_interval': int(os.environ['SYNC_INTERVAL']) if 'SYNC_INTERVAL' in os.environ else None,
+            'sync_empty': os.environ['SYNC_EMPTY'] == 'true' if 'SYNC_EMPTY' in os.environ else None,
+            'aws_tag_key': os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else None,
+            'aws_tag_value': os.environ['AWS_TAG_VALUE'] if 'AWS_TAG_VALUE' in os.environ else None,
+        })
 
-    # list secret from AWS Secrets manager
-    def list_aws_secrets_by_tags(self):
+    def list_aws_secrets_by_tags(self) -> list:
+        """
+        List all AWS Secrets Manager secrets with the tag key/value pair
+        :return: list of secrets
+        """
         secrets = []
         filters = [
             {
@@ -135,7 +150,7 @@ class SecretSyncer:
         for tag in aws_secret['Tags']:
             if tag['Key'] == 'K8s-Namespace':
                 return tag['Value']
-        raise Exception("No Namespace tag found for secret: ", aws_secret['Name'])
+        raise Exception("No Namespace tag found for secret: ", aws_secret['Name']) # FIXME Declare a custom error
 
     def create_or_update_secret(self, namespace, secret_name, data):
         body = client.V1Secret(
@@ -223,50 +238,40 @@ class SecretSyncer:
                 aws_secrets = self.list_aws_secrets_by_tags()
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
-                    label_selector=self.params['aws_tag_key'] + "=" + self.params['aws_tag_value'])
+                    label_selector=self.params['aws_tag_key'] + "=" + self.params['aws_tag_value']
+                )
+
                 for aws_secret in aws_secrets:
                     try:
                         namespace = self.get_secret_namespace_tag(aws_secret)
-                    except Exception as e:
-                        self.logger.error(e)
+                    except Exception as e: # FIXME Should not catch generic exception, declare a custom one then catch it here
+                        self.logger.error(
+                            msg="Failed to get namespace tag from AWS secret",
+                            err=e,
+                        )
+
                         continue
+
                     # get secret data from AWS Secrets Manager
                     data = json.loads(self.get_secret_values(aws_secret['Name']))
-                    self.create_or_update_secret(namespace=namespace,
-                                                 name=aws_secret['Name'],
-                                                 data=self.get_encoded_data_to_sync(data, self.params['sync_empty']))
+
+                    self.create_or_update_secret(
+                        namespace=namespace,
+                        secret_name=aws_secret['Name'],
+                        data=self.get_encoded_data_to_sync(
+                            data,
+                            self.params['sync_empty']
+                        )
+                    )
 
                 self.delete_obsolete_secrets(existing_kube_secrets, aws_secrets)
-
-            except Exception as e:
+            except Exception as e: # FIXME Really a bad practice
                 self.logger.error(
-                    msg="Failed to get namespace tag from AWS secret",
+                    msg="Woops, something went wrong!", # FIXME An exemple of bad practice
                     err=e,
                 )
 
             time.sleep(self.params['sync_interval'])
 
 
-def main():
-    params = {}
-    if 'SYNC_INTERVAL' in os.environ:
-        params['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
-    if 'SYNC_EMPTY' in os.environ:
-        params['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
-    if 'AWS_TAG_KEY' in os.environ:
-        params['aws_tag_key'] = os.environ['AWS_TAG_KEY']
-    if 'AWS_TAG_VALUE' in os.environ:
-        params['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
-
-    config.load_incluster_config()
-
-    secret_syncer = SecretSyncer(
-        client.CoreV1Api(),
-        os.environ['AWS_REGION'],
-        params
-    )
-    secret_syncer.run()
-
-
-if __name__ == "__main__":
-    main()
+SecretSyncer().run()
