@@ -11,7 +11,7 @@ from kubernetes import client, config
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_record = {
-            "application": "aws-secrets-synchronizer",
+            "application_name": "aws-secrets-synchronizer",
             "level": record.levelname,
             "msg": record.getMessage()
         }
