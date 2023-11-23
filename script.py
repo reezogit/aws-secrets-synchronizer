@@ -44,6 +44,9 @@ def get_base_logger(name=None):
 
 
 class SecretSyncer:
+    """
+    SecretSyncer is a class that synchronize AWS Secrets Manager secrets with Kubernetes secrets.
+    """
     _base_config = {
         'aws_tag_key': 'SyncedBy',
         'aws_tag_value': 'aws-secrets-synchronizer',
@@ -51,11 +54,12 @@ class SecretSyncer:
         'sync_interval': 300,
     }
 
-    def __init__(self):
-        # Load configurtion and instanciate AWS API
+    def __init__(self, cfg=None):
+        # Initialize Kubernetes client
         config.load_incluster_config()
         self.v1_api = client.CoreV1Api()
 
+        # Initiliaze AWS Secrets Manager client
         self.client = boto3.client(
             service_name='secretsmanager',
             region_name=AWS_REGION,
@@ -64,13 +68,10 @@ class SecretSyncer:
         # Use the default logger if the user did not provide its own.
         self.logger = get_base_logger('SecretSyncer') # not compatible with multiple instances of SecretSyncer
 
-        # Merge default params with environments values
-        self.params = SecretSyncer._base_config.update({
-            'sync_interval': int(os.environ['SYNC_INTERVAL']) if 'SYNC_INTERVAL' in os.environ else None,
-            'sync_empty': os.environ['SYNC_EMPTY'] == 'true' if 'SYNC_EMPTY' in os.environ else None,
-            'aws_tag_key': os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else None,
-            'aws_tag_value': os.environ['AWS_TAG_VALUE'] if 'AWS_TAG_VALUE' in os.environ else None,
-        })
+        # Merge default params with user config
+        self.params = SecretSyncer._base_config
+        if cfg:
+            self.params.update(cfg)
 
     def list_aws_secrets_by_tags(self) -> list:
         """
@@ -314,4 +315,11 @@ class SecretSyncer:
             time.sleep(self.params['sync_interval'])
 
 
-SecretSyncer().run()
+secret_syncer_config = {
+    'sync_interval': int(os.environ['SYNC_INTERVAL']) if 'SYNC_INTERVAL' in os.environ else None,
+    'sync_empty': os.environ['SYNC_EMPTY'] == 'true' if 'SYNC_EMPTY' in os.environ else None,
+    'aws_tag_key': os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else None,
+    'aws_tag_value': os.environ['AWS_TAG_VALUE'] if 'AWS_TAG_VALUE' in os.environ else None,
+}
+
+SecretSyncer(secret_syncer_config).run()
