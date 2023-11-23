@@ -64,7 +64,7 @@ class SecretSyncer:
         # Use the default logger if the user did not provide its own.
         self.logger = get_base_logger('SecretSyncer') # not compatible with multiple instances of SecretSyncer
 
-        # Merge default params with params passed in
+        # Merge default params with environments values
         self.params = SecretSyncer._base_config.update({
             'sync_interval': int(os.environ['SYNC_INTERVAL']) if 'SYNC_INTERVAL' in os.environ else None,
             'sync_empty': os.environ['SYNC_EMPTY'] == 'true' if 'SYNC_EMPTY' in os.environ else None,
@@ -107,6 +107,13 @@ class SecretSyncer:
         return secrets
 
     def aws_list_secrets_call(self, filters, next_token=None, max_results=100):
+        """
+        Call AWS Secrets Manager list_secrets API
+        :param filters: array of filters
+        :param next_token: token to get next page
+        :param max_results: max results per page
+        :return: TODO
+        """
         try:
             if next_token is None:
                 get_secret_value_response = self.client.list_secrets(
@@ -127,8 +134,12 @@ class SecretSyncer:
 
         return get_secret_value_response
 
-    # get secret from AWS Secrets Manager
     def get_secret_values(self, secret_name):
+        """
+        Get secret value from AWS Secrets Manager
+        :param secret_name
+        :return: secret content
+        """
         try:
             get_secret_value_response = self.client.get_secret_value(
                 SecretId=secret_name
@@ -138,21 +149,33 @@ class SecretSyncer:
             # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
             raise e
 
-        self.logger.info(msg="Found secret", secret_name=secret_name)
+        self.logger.info(msg="Secret found", secret_name=secret_name)
 
         # Decrypts secret using the associated KMS key.
         secret = get_secret_value_response['SecretString']
 
         return secret
 
-    # get secret from AWS Secrets Manager
     def get_secret_namespace_tag(self, aws_secret):
+        """
+        Get secret namespace tag from AWS Secrets Manager
+        :param aws_secret
+        :return: namespace tag value
+        """
         for tag in aws_secret['Tags']:
             if tag['Key'] == 'K8s-Namespace':
                 return tag['Value']
+
         raise Exception("No Namespace tag found for secret: ", aws_secret['Name']) # FIXME Declare a custom error
 
     def create_or_update_secret(self, namespace, secret_name, data):
+        """
+        Create or update a secret in Kubernetes
+        :param namespace: namespace where to create the secret
+        :param secret_name: name of the secret
+        :param data: data to store in the secret
+        :return: None
+        """
         body = client.V1Secret(
             api_version="v1",
             kind="Secret",
@@ -197,6 +220,12 @@ class SecretSyncer:
             raise e
 
     def delete_obsolete_secrets(self, existing_kube_secrets, aws_secrets):
+        """
+        Delete secrets that are not in AWS Secrets Manager anymore
+        :param existing_kube_secrets: list of existing secrets in Kubernetes
+        :param aws_secrets: list of existing secrets in AWS Secrets Manager
+        :return: None
+        """
         for existing_kube_secret in existing_kube_secrets.items:
             if existing_kube_secret.metadata.name not in [aws_secret['Name'] for aws_secret in aws_secrets]:
                 self.v1_api.delete_namespaced_secret(
@@ -212,6 +241,13 @@ class SecretSyncer:
                 )
 
     def get_encoded_data_to_sync(self, data, sync_empty):
+        """
+        Encode data to base64 and filter out empty values
+        :param data: data to encode
+        :param sync_empty: boolean to sync empty values
+        :return: encoded data
+        """
+
         # first, filter out empty values if sync_empty is False
         filtered_data = {}
         for key, value in data.items():
@@ -233,6 +269,10 @@ class SecretSyncer:
         return encoded_data
 
     def run(self):
+        """
+        Main loop
+        :return: None
+        """
         while True:
             try:
                 aws_secrets = self.list_aws_secrets_by_tags()
