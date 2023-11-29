@@ -23,7 +23,7 @@ def get_base_logger(name=None):
             structlog.processors.add_log_level,
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
-            structlog.processors.EventRenamer("msg"), # rename 'event' to 'msg'
+            structlog.processors.EventRenamer("msg"),  # rename 'event' to 'msg'
             structlog.processors.TimeStamper(fmt="iso", utc=False),
             structlog.processors.JSONRenderer()
         ],
@@ -70,6 +70,7 @@ class SecretSyncer:
 
         # Merge default params with user config
         self.params = SecretSyncer._base_config
+
         if cfg:
             self.params.update(cfg)
 
@@ -150,7 +151,7 @@ class SecretSyncer:
             # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
             raise e
 
-        self.logger.info(msg="Secret found", secret_name=secret_name)
+        self.logger.info("Secret found", secret_name=secret_name)
 
         # Decrypts secret using the associated KMS key.
         secret = get_secret_value_response['SecretString']
@@ -200,11 +201,11 @@ class SecretSyncer:
                     body=body
                 )
 
-                self.logger.info(msg="Secret updated", secret_name=secret_name, k8s_namespace=namespace)
+                self.logger.info("Secret updated", secret_name=secret_name, k8s_namespace=namespace)
 
                 return
 
-            self.logger.info(msg="Secret unchanged", secret_name=secret_name, k8s_namespace=namespace)
+            self.logger.info("Secret unchanged", secret_name=secret_name, k8s_namespace=namespace)
 
         except client.rest.ApiException as e:
             if e.status == 404:
@@ -214,7 +215,7 @@ class SecretSyncer:
                     body=body
                 )
 
-                self.logger.info(msg="Secret created", secret_name=secret_name, k8s_namespace=namespace)
+                self.logger.info("Secret created", secret_name=secret_name, k8s_namespace=namespace)
 
                 return
 
@@ -236,7 +237,7 @@ class SecretSyncer:
                 )
 
                 self.logger.info(
-                    msg="Secret deleted",
+                    "Secret deleted",
                     secret_name=existing_kube_secret.metadata.name,
                     k8s_namespace=existing_kube_secret.metadata.namespace
                 )
@@ -254,11 +255,11 @@ class SecretSyncer:
         for key, value in data.items():
             if not value:
                 if not sync_empty:
-                    self.logger.warning(msg="Empty key removed from synchronization", key=key)
+                    self.logger.warning("Empty key removed from synchronization", key=key)
 
                     continue
 
-                self.logger.warning(msg="Empty key", key=key)
+                self.logger.warning("Empty key", key=key)
             else:
                 filtered_data[key] = value
 
@@ -276,18 +277,21 @@ class SecretSyncer:
         """
         while True:
             try:
+                self.logger.info("Syncing secrets")
                 aws_secrets = self.list_aws_secrets_by_tags()
+                self.logger.info("Got list of secrets", secrets=aws_secrets)
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
                     label_selector=self.params['aws_tag_key'] + "=" + self.params['aws_tag_value']
                 )
+                self.logger.info("Existing secrets in k8s secrets", secrets=existing_kube_secrets.items)
 
                 for aws_secret in aws_secrets:
                     try:
                         namespace = self.get_secret_namespace_tag(aws_secret)
-                    except Exception as e: # FIXME Should not catch generic exception, declare a custom one then catch it here
+                    except Exception as e:  # FIXME Should not catch generic exception, declare a custom one then catch it here
                         self.logger.error(
-                            msg="Failed to get namespace tag from AWS secret",
+                            "Failed to get namespace tag from AWS secret",
                             err=e,
                         )
 
@@ -306,20 +310,20 @@ class SecretSyncer:
                     )
 
                 self.delete_obsolete_secrets(existing_kube_secrets, aws_secrets)
-            except Exception as e: # FIXME Really a bad practice
-                self.logger.error(
-                    msg="Woops, something went wrong!", # FIXME An exemple of bad practice
-                    err=e,
-                )
+            except Exception as e:  # FIXME Really a bad practice
+                self.logger.error("Woops, something went wrong!", err=e)
 
             time.sleep(self.params['sync_interval'])
 
 
-secret_syncer_config = {
-    'sync_interval': int(os.environ['SYNC_INTERVAL']) if 'SYNC_INTERVAL' in os.environ else None,
-    'sync_empty': os.environ['SYNC_EMPTY'] == 'true' if 'SYNC_EMPTY' in os.environ else None,
-    'aws_tag_key': os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else None,
-    'aws_tag_value': os.environ['AWS_TAG_VALUE'] if 'AWS_TAG_VALUE' in os.environ else None,
-}
+secret_syncer_config = {}
+if 'SYNC_INTERVAL' in os.environ:
+    secret_syncer_config['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
+if 'SYNC_EMPTY' in os.environ:
+    secret_syncer_config['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
+if 'AWS_TAG_KEY' in os.environ:
+    secret_syncer_config['aws_tag_key'] = os.environ['AWS_TAG_KEY']
+if 'AWS_TAG_VALUE' in os.environ:
+    secret_syncer_config['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
 
 SecretSyncer(secret_syncer_config).run()
