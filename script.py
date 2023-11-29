@@ -3,41 +3,82 @@ import json
 import os
 import time
 import logging
+import structlog
 import boto3
 from botocore.exceptions import ClientError
 from kubernetes import client, config
 
+AWS_REGION = os.environ['AWS_REGION']
 
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
-        log_record = {
-            "application_name": "aws-secrets-synchronizer",
-            "level": record.levelname,
-            "msg": record.getMessage()
-        }
-        return json.dumps(log_record)
+APPLICATION_NAME = 'aws-secrets-synchronizer'
+APPLICATION_VERSION =  os.environ['APPLICATION_VERSION'] # Mandatory, will raise KeyError if not set
+ENVIRONMENT_TYPE = os.environ['ENVIRONMENT_TYPE'] # Mandatory, will raise KeyError if not set
+ENVIRONMENT_NAME = os.environ.get('ENVIRONMENT_NAME')
+
+
+def get_base_logger(name=None):
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
+            structlog.processors.EventRenamer("msg"),  # rename 'event' to 'msg'
+            structlog.processors.TimeStamper(fmt="iso", utc=False),
+            structlog.processors.JSONRenderer()
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.NOTSET),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=False
+    )
+
+    structlog.contextvars.bind_contextvars(
+        application_name=APPLICATION_NAME,
+        application_version=APPLICATION_VERSION,
+        environment_type=ENVIRONMENT_TYPE,
+        environment_name=ENVIRONMENT_NAME,
+    )
+
+    return structlog.get_logger(name=name)
 
 
 class SecretSyncer:
-    def __init__(self, v1_api, region_name, logger, params):
-        self.v1_api = v1_api
+    """
+    SecretSyncer is a class that synchronize AWS Secrets Manager secrets with Kubernetes secrets.
+    """
+    _base_config = {
+        'aws_tag_key': 'SyncedBy',
+        'aws_tag_value': 'aws-secrets-synchronizer',
+        'sync_empty': True,
+        'sync_interval': 300,
+    }
+
+    def __init__(self, cfg=None):
+        # Initialize Kubernetes client
+        config.load_incluster_config()
+        self.v1_api = client.CoreV1Api()
+
+        # Initiliaze AWS Secrets Manager client
         self.client = boto3.client(
             service_name='secretsmanager',
-            region_name=region_name,
+            region_name=AWS_REGION,
         )
-        self.region_name = region_name
-        self.logger = logger
-        # merge default params with params passed in
-        self.params = {
-            'aws_tag_key': 'SyncedBy',
-            'aws_tag_value': 'aws-secrets-synchronizer',
-            'sync_empty': True,
-            'sync_interval': 300,
-        }
-        self.params.update(params)
 
-    # list secret from AWS Secrets manager
-    def list_aws_secrets_by_tags(self):
+        # Use the default logger if the user did not provide its own.
+        self.logger = get_base_logger('SecretSyncer') # not compatible with multiple instances of SecretSyncer
+
+        # Merge default params with user config
+        self.params = SecretSyncer._base_config
+
+        if cfg:
+            self.params.update(cfg)
+
+    def list_aws_secrets_by_tags(self) -> list:
+        """
+        List all AWS Secrets Manager secrets with the tag key/value pair
+        :return: list of secrets
+        """
         secrets = []
         filters = [
             {
@@ -68,6 +109,13 @@ class SecretSyncer:
         return secrets
 
     def aws_list_secrets_call(self, filters, next_token=None, max_results=100):
+        """
+        Call AWS Secrets Manager list_secrets API
+        :param filters: array of filters
+        :param next_token: token to get next page
+        :param max_results: max results per page
+        :return: TODO
+        """
         try:
             if next_token is None:
                 get_secret_value_response = self.client.list_secrets(
@@ -88,10 +136,12 @@ class SecretSyncer:
 
         return get_secret_value_response
 
-    # get secret from AWS Secrets Manager
     def get_secret_values(self, secret_name):
-        self.logger.info("Getting secret: %s", secret_name)
-
+        """
+        Get secret value from AWS Secrets Manager
+        :param secret_name
+        :return: secret content
+        """
         try:
             get_secret_value_response = self.client.get_secret_value(
                 SecretId=secret_name
@@ -101,71 +151,115 @@ class SecretSyncer:
             # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
             raise e
 
+        self.logger.info("Secret found", secret_name=secret_name)
+
         # Decrypts secret using the associated KMS key.
         secret = get_secret_value_response['SecretString']
 
         return secret
 
-    # get secret from AWS Secrets Manager
     def get_secret_namespace_tag(self, aws_secret):
+        """
+        Get secret namespace tag from AWS Secrets Manager
+        :param aws_secret
+        :return: namespace tag value
+        """
         for tag in aws_secret['Tags']:
             if tag['Key'] == 'K8s-Namespace':
                 return tag['Value']
-        raise Exception("No Namespace tag found for secret: ", aws_secret['Name'])
 
-    def create_or_update_secret(self, namespace, name, data):
+        raise Exception("No Namespace tag found for secret: ", aws_secret['Name']) # FIXME Declare a custom error
+
+    def create_or_update_secret(self, namespace, secret_name, data):
+        """
+        Create or update a secret in Kubernetes
+        :param namespace: namespace where to create the secret
+        :param secret_name: name of the secret
+        :param data: data to store in the secret
+        :return: None
+        """
         body = client.V1Secret(
             api_version="v1",
             kind="Secret",
-            metadata=client.V1ObjectMeta(name=name, annotations={},
-                                         labels={self.params['aws_tag_key']: self.params['aws_tag_value']}),
+            metadata=client.V1ObjectMeta(
+                name=secret_name,
+                annotations={},
+                labels={self.params['aws_tag_key']: self.params['aws_tag_value']}
+            ),
             data=data
         )
+
         try:
-            # Check if the secret already exists
-            existing_data = self.v1_api.read_namespaced_secret(name=name, namespace=namespace)
+            # Check if the secret exists
+            existing_data = self.v1_api.read_namespaced_secret(name=secret_name, namespace=namespace)
+
             # If it exists, replace it
             if existing_data.data != body.data:
-                self.logger.info("Updating secret: %s in namespace: %s", name, namespace)
                 self.v1_api.replace_namespaced_secret(
-                    name=name,
+                    name=secret_name,
                     namespace=namespace,
                     body=body
                 )
-            else:
-                self.logger.info("No change in secret: %s", name)
+
+                self.logger.info("Secret updated", secret_name=secret_name, k8s_namespace=namespace)
+
+                return
+
+            self.logger.info("Secret unchanged", secret_name=secret_name, k8s_namespace=namespace)
 
         except client.rest.ApiException as e:
             if e.status == 404:
                 # If it doesn't exist, create it
-                self.logger.info("Secret not found, creating secret: %s in namespace: %s", name, namespace)
                 self.v1_api.create_namespaced_secret(
                     namespace=namespace,
                     body=body
                 )
-            else:
-                raise e
+
+                self.logger.info("Secret created", secret_name=secret_name, k8s_namespace=namespace)
+
+                return
+
+            raise e
 
     def delete_obsolete_secrets(self, existing_kube_secrets, aws_secrets):
+        """
+        Delete secrets that are not in AWS Secrets Manager anymore
+        :param existing_kube_secrets: list of existing secrets in Kubernetes
+        :param aws_secrets: list of existing secrets in AWS Secrets Manager
+        :return: None
+        """
         for existing_kube_secret in existing_kube_secrets.items:
             if existing_kube_secret.metadata.name not in [aws_secret['Name'] for aws_secret in aws_secrets]:
-                self.logger.info("Deleting secret: %s in namespace: %s", existing_kube_secret.metadata.name,
-                                 existing_kube_secret.metadata.namespace)
                 self.v1_api.delete_namespaced_secret(
                     name=existing_kube_secret.metadata.name,
                     namespace=existing_kube_secret.metadata.namespace,
                     body=client.V1DeleteOptions()
                 )
 
+                self.logger.info(
+                    "Secret deleted",
+                    secret_name=existing_kube_secret.metadata.name,
+                    k8s_namespace=existing_kube_secret.metadata.namespace
+                )
+
     def get_encoded_data_to_sync(self, data, sync_empty):
+        """
+        Encode data to base64 and filter out empty values
+        :param data: data to encode
+        :param sync_empty: boolean to sync empty values
+        :return: encoded data
+        """
+
         # first, filter out empty values if sync_empty is False
         filtered_data = {}
         for key, value in data.items():
-            if value is None and sync_empty is False:
-                self.logger.warning("Key %s has an empty value, removed from synchronization.", key)
-                continue
-            elif value is None:
-                self.logger.warning("Key %s has an empty value.", key)
+            if not value:
+                if not sync_empty:
+                    self.logger.warning("Empty key removed from synchronization", key=key)
+
+                    continue
+
+                self.logger.warning("Empty key", key=key)
             else:
                 filtered_data[key] = value
 
@@ -177,60 +271,59 @@ class SecretSyncer:
         return encoded_data
 
     def run(self):
+        """
+        Main loop
+        :return: None
+        """
         while True:
             try:
+                self.logger.info("Syncing secrets")
                 aws_secrets = self.list_aws_secrets_by_tags()
+                self.logger.info("Got list of secrets", secrets=aws_secrets)
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
-                    label_selector=self.params['aws_tag_key'] + "=" + self.params['aws_tag_value'])
+                    label_selector=self.params['aws_tag_key'] + "=" + self.params['aws_tag_value']
+                )
+                self.logger.info("Existing secrets in k8s secrets", secrets=existing_kube_secrets.items)
+
                 for aws_secret in aws_secrets:
                     try:
                         namespace = self.get_secret_namespace_tag(aws_secret)
-                    except Exception as e:
-                        self.logger.error(e)
+                    except Exception as e:  # FIXME Should not catch generic exception, declare a custom one then catch it here
+                        self.logger.error(
+                            "Failed to get namespace tag from AWS secret",
+                            err=e,
+                        )
+
                         continue
+
                     # get secret data from AWS Secrets Manager
                     data = json.loads(self.get_secret_values(aws_secret['Name']))
-                    self.create_or_update_secret(namespace=namespace,
-                                                 name=aws_secret['Name'],
-                                                 data=self.get_encoded_data_to_sync(data, self.params['sync_empty']))
+
+                    self.create_or_update_secret(
+                        namespace=namespace,
+                        secret_name=aws_secret['Name'],
+                        data=self.get_encoded_data_to_sync(
+                            data,
+                            self.params['sync_empty']
+                        )
+                    )
 
                 self.delete_obsolete_secrets(existing_kube_secrets, aws_secrets)
-
-            except Exception as e:
-                self.logger.error(e)
+            except Exception as e:  # FIXME Really a bad practice
+                self.logger.error("Woops, something went wrong!", err=e)
 
             time.sleep(self.params['sync_interval'])
 
 
-def main():
-    params = {}
-    if 'SYNC_INTERVAL' in os.environ:
-        params['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
-    if 'SYNC_EMPTY' in os.environ:
-        params['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
-    if 'AWS_TAG_KEY' in os.environ:
-        params['aws_tag_key'] = os.environ['AWS_TAG_KEY']
-    if 'AWS_TAG_VALUE' in os.environ:
-        params['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
+secret_syncer_config = {}
+if 'SYNC_INTERVAL' in os.environ:
+    secret_syncer_config['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
+if 'SYNC_EMPTY' in os.environ:
+    secret_syncer_config['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
+if 'AWS_TAG_KEY' in os.environ:
+    secret_syncer_config['aws_tag_key'] = os.environ['AWS_TAG_KEY']
+if 'AWS_TAG_VALUE' in os.environ:
+    secret_syncer_config['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
 
-    config.load_incluster_config()
-
-    # create logger with JSON formatter
-    logger = logging.getLogger('json_logger')
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(JsonFormatter())
-    logger.addHandler(log_handler)
-    logger.setLevel(os.environ.get('LOG_LEVEL', logging.INFO))
-
-    secret_syncer = SecretSyncer(
-        client.CoreV1Api(),
-        os.environ['AWS_REGION'],
-        logger,
-        params
-    )
-    secret_syncer.run()
-
-
-if __name__ == "__main__":
-    main()
+SecretSyncer(secret_syncer_config).run()
