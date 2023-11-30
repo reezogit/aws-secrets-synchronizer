@@ -9,8 +9,6 @@ from botocore.exceptions import ClientError
 from kubernetes import client, config
 
 AWS_REGION = os.environ['AWS_REGION']
-
-APPLICATION_NAME = 'aws-secrets-synchronizer'
 SYNC_INTERVAL = os.environ['SYNC_INTERVAL'] if 'SYNC_INTERVAL' in os.environ else 300
 SYNC_EMPTY = os.environ['SYNC_EMPTY'] if 'SYNC_EMPTY' in os.environ else 'true'
 AWS_TAG_KEY = os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else 'SyncedBy'
@@ -32,10 +30,6 @@ def get_base_logger(name=None):
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=False
-    )
-
-    structlog.contextvars.bind_contextvars(
-        application_name=APPLICATION_NAME,
     )
 
     return structlog.get_logger(name=name)
