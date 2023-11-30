@@ -9,10 +9,10 @@ from botocore.exceptions import ClientError
 from kubernetes import client, config
 
 AWS_REGION = os.environ['AWS_REGION']
-SYNC_INTERVAL = os.environ['SYNC_INTERVAL'] if 'SYNC_INTERVAL' in os.environ else 300
-SYNC_EMPTY = os.environ['SYNC_EMPTY'] if 'SYNC_EMPTY' in os.environ else 'true'
-AWS_TAG_KEY = os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else 'SyncedBy'
-AWS_TAG_VALUE = os.environ['AWS_TAG_VALUE'] if 'AWS_TAG_VALUE' in os.environ else 'aws-secrets-synchronizer'
+SYNC_INTERVAL = os.getenv('SYNC_INTERVAL', 300)
+SYNC_EMPTY = os.getenv('SYNC_EMPTY', 'true')
+AWS_TAG_KEY = os.getenv('AWS_TAG_KEY', 'SyncedBy')
+AWS_TAG_VALUE = os.getenv('AWS_TAG_VALUE', 'aws-secret-synchronizer')
 
 
 def get_base_logger(name=None):
