@@ -9,7 +9,6 @@ from botocore.exceptions import ClientError
 from kubernetes import client, config
 
 AWS_REGION = os.environ['AWS_REGION']
-
 APPLICATION_NAME = 'aws-secrets-synchronizer'
 SYNC_INTERVAL = os.environ['SYNC_INTERVAL'] if 'SYNC_INTERVAL' in os.environ else 300
 SYNC_EMPTY = os.environ['SYNC_EMPTY'] if 'SYNC_EMPTY' in os.environ else 'true'
