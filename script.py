@@ -9,11 +9,7 @@ from botocore.exceptions import ClientError
 from kubernetes import client, config
 
 AWS_REGION = os.environ['AWS_REGION']
-
 APPLICATION_NAME = 'aws-secrets-synchronizer'
-APPLICATION_VERSION =  os.environ['APPLICATION_VERSION'] # Mandatory, will raise KeyError if not set
-ENVIRONMENT_TYPE = os.environ['ENVIRONMENT_TYPE'] # Mandatory, will raise KeyError if not set
-ENVIRONMENT_NAME = os.environ.get('ENVIRONMENT_NAME')
 
 
 def get_base_logger(name=None):
@@ -35,9 +31,6 @@ def get_base_logger(name=None):
 
     structlog.contextvars.bind_contextvars(
         application_name=APPLICATION_NAME,
-        application_version=APPLICATION_VERSION,
-        environment_type=ENVIRONMENT_TYPE,
-        environment_name=ENVIRONMENT_NAME,
     )
 
     return structlog.get_logger(name=name)
