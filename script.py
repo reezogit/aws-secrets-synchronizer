@@ -11,9 +11,10 @@ from kubernetes import client, config
 AWS_REGION = os.environ['AWS_REGION']
 
 APPLICATION_NAME = 'aws-secrets-synchronizer'
-APPLICATION_VERSION =  os.environ['APPLICATION_VERSION'] # Mandatory, will raise KeyError if not set
-ENVIRONMENT_TYPE = os.environ['ENVIRONMENT_TYPE'] # Mandatory, will raise KeyError if not set
-ENVIRONMENT_NAME = os.environ.get('ENVIRONMENT_NAME')
+SYNC_INTERVAL = os.environ['SYNC_INTERVAL'] if 'SYNC_INTERVAL' in os.environ else 300
+SYNC_EMPTY = os.environ['SYNC_EMPTY'] if 'SYNC_EMPTY' in os.environ else 'true'
+AWS_TAG_KEY = os.environ['AWS_TAG_KEY'] if 'AWS_TAG_KEY' in os.environ else 'SyncedBy'
+AWS_TAG_VALUE = os.environ['AWS_TAG_VALUE'] if 'AWS_TAG_VALUE' in os.environ else 'aws-secrets-synchronizer'
 
 
 def get_base_logger(name=None):
@@ -23,7 +24,7 @@ def get_base_logger(name=None):
             structlog.processors.add_log_level,
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
-            structlog.processors.EventRenamer("msg"),  # rename 'event' to 'msg'
+            structlog.processors.EventRenamer("message"),  # rename 'event' to 'message'
             structlog.processors.TimeStamper(fmt="iso", utc=False),
             structlog.processors.JSONRenderer()
         ],
@@ -35,9 +36,6 @@ def get_base_logger(name=None):
 
     structlog.contextvars.bind_contextvars(
         application_name=APPLICATION_NAME,
-        application_version=APPLICATION_VERSION,
-        environment_type=ENVIRONMENT_TYPE,
-        environment_name=ENVIRONMENT_NAME,
     )
 
     return structlog.get_logger(name=name)
@@ -48,13 +46,13 @@ class SecretSyncer:
     SecretSyncer is a class that synchronize AWS Secrets Manager secrets with Kubernetes secrets.
     """
     _base_config = {
-        'aws_tag_key': 'SyncedBy',
-        'aws_tag_value': 'aws-secrets-synchronizer',
-        'sync_empty': True,
-        'sync_interval': 300,
+        'aws_tag_key': AWS_TAG_KEY,
+        'aws_tag_value': AWS_TAG_VALUE,
+        'sync_empty': SYNC_EMPTY == 'true',
+        'sync_interval': SYNC_INTERVAL,
     }
 
-    def __init__(self, cfg=None):
+    def __init__(self):
         # Initialize Kubernetes client
         config.load_incluster_config()
         self.v1_api = client.CoreV1Api()
@@ -71,8 +69,6 @@ class SecretSyncer:
         # Merge default params with user config
         self.params = SecretSyncer._base_config
 
-        if cfg:
-            self.params.update(cfg)
 
     def list_aws_secrets_by_tags(self) -> list:
         """
@@ -292,6 +288,7 @@ class SecretSyncer:
                     except Exception as e:  # FIXME Should not catch generic exception, declare a custom one then catch it here
                         self.logger.error(
                             "Failed to get namespace tag from AWS secret",
+                            secret_name=aws_secret['Name'],
                             err=e,
                         )
 
@@ -316,14 +313,4 @@ class SecretSyncer:
             time.sleep(self.params['sync_interval'])
 
 
-secret_syncer_config = {}
-if 'SYNC_INTERVAL' in os.environ:
-    secret_syncer_config['sync_interval'] = int(os.environ['SYNC_INTERVAL'])
-if 'SYNC_EMPTY' in os.environ:
-    secret_syncer_config['sync_empty'] = os.environ['SYNC_EMPTY'] == 'true'
-if 'AWS_TAG_KEY' in os.environ:
-    secret_syncer_config['aws_tag_key'] = os.environ['AWS_TAG_KEY']
-if 'AWS_TAG_VALUE' in os.environ:
-    secret_syncer_config['aws_tag_value'] = os.environ['AWS_TAG_VALUE']
-
-SecretSyncer(secret_syncer_config).run()
+SecretSyncer().run()
