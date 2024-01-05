@@ -13,7 +13,7 @@ SYNC_INTERVAL = os.getenv('SYNC_INTERVAL', 300)
 SYNC_EMPTY = os.getenv('SYNC_EMPTY', 'true')
 AWS_TAG_KEY = os.getenv('AWS_TAG_KEY', 'SyncedBy')
 AWS_TAG_VALUE = os.getenv('AWS_TAG_VALUE', 'aws-secret-synchronizer')
-LOG_LEVEL = os.getenv('LOG_LEVEL', logging.INFO)
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 
 def get_base_logger(name=None):
