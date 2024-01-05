@@ -269,12 +269,12 @@ class SecretSyncer:
             try:
                 self.logger.info("Syncing secrets")
                 aws_secrets = self.list_aws_secrets_by_tags()
-                self.logger.info("Got list of secrets", secrets=aws_secrets)
+                self.logger.debug("Got list of secrets", secrets=aws_secrets)
                 existing_kube_secrets = self.v1_api.list_secret_for_all_namespaces(
                     watch=False,
                     label_selector=self.params['aws_tag_key'] + "=" + self.params['aws_tag_value']
                 )
-                self.logger.info("Existing secrets in k8s secrets", secrets=existing_kube_secrets.items)
+                self.logger.debug("Existing secrets in k8s secrets", secrets=existing_kube_secrets.items)
 
                 for aws_secret in aws_secrets:
                     try:
