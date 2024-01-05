@@ -1,7 +1,7 @@
 image:
   repository: "ghcr.io/reezogit"
   name: "aws-secrets-synchronizer"
-  tag: "0.2.1-rc5"
+  tag: "0.2.1-rc6"
   pullPolicy: IfNotPresent
 
 replicaCount: 1

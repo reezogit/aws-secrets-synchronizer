@@ -304,7 +304,7 @@ class SecretSyncer:
             except Exception as e:  # FIXME Really a bad practice
                 self.logger.error("Woops, something went wrong!", err=e)
 
-            time.sleep(self.params['sync_interval'])
+            time.sleep(int(self.params['sync_interval']))
 
 
 SecretSyncer().run()
