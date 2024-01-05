@@ -4,6 +4,26 @@ entries:
   - annotations:
       artifacthub.io/category: security
     apiVersion: v2
+    created: "2024-01-05T10:16:13.573305651Z"
+    description: K8S Operator that allows you to sync AWS SecretManager secrets with
+      K8S secrets.
+    digest: e54231637ccabe16b77a4de77b2a5289b43207fc69b7e3d7d63bd234078e7f17
+    keywords:
+    - AWS secrets
+    - AWS secretmanager
+    maintainers:
+    - email: devops@reezocar.com
+      name: Fabien Duhamel
+    name: aws-secrets-synchronizer
+    sources:
+    - https://github.com/reezogit/aws-secrets-synchronizer
+    type: application
+    urls:
+    - https://github.com/reezogit/aws-secrets-synchronizer/releases/download/aws-secrets-synchronizer-0.2.1-rc5/aws-secrets-synchronizer-0.2.1-rc5.tgz
+    version: 0.2.1-rc5
+  - annotations:
+      artifacthub.io/category: security
+    apiVersion: v2
     created: "2023-11-29T10:14:30.176786898Z"
     description: K8S Operator that allows you to sync AWS SecretManager secrets with
       K8S secrets.
@@ -201,4 +221,4 @@ entries:
     urls:
     - https://github.com/reezogit/aws-secrets-synchronizer/releases/download/aws-secrets-synchronizer-0.0.1-alpha1/aws-secrets-synchronizer-0.0.1-alpha1.tgz
     version: 0.0.1-alpha1
-generated: "2023-11-29T10:14:30.176861918Z"
+generated: "2024-01-05T10:16:13.573371804Z"
