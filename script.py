@@ -13,6 +13,7 @@ SYNC_INTERVAL = os.getenv('SYNC_INTERVAL', 300)
 SYNC_EMPTY = os.getenv('SYNC_EMPTY', 'true')
 AWS_TAG_KEY = os.getenv('AWS_TAG_KEY', 'SyncedBy')
 AWS_TAG_VALUE = os.getenv('AWS_TAG_VALUE', 'aws-secret-synchronizer')
+LOG_LEVEL = os.getenv('LOG_LEVEL', logging.INFO)
 
 
 def get_base_logger(name=None):
@@ -26,7 +27,7 @@ def get_base_logger(name=None):
             structlog.processors.TimeStamper(fmt="iso", utc=False),
             structlog.processors.JSONRenderer()
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.NOTSET),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(LOG_LEVEL)),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=False
